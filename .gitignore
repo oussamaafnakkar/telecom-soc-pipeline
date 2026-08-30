@@ -1,0 +1,17 @@
+# secrets
+.env
+
+# generated fixtures (regenerate via generators/, don't commit bulk output)
+tests/fixtures/*.jsonl
+!tests/fixtures/.gitkeep
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# ELK local data
+esdata/
+
+# OS
+.DS_Store

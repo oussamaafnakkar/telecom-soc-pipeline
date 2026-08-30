@@ -1,0 +1,12 @@
+# One pipeline per attack scenario, so a bad rule/config for one scenario
+# can't take down ingestion for the others.
+- pipeline.id: ss7-signaling
+  path.config: "/usr/share/logstash/pipeline/conf.d/ss7.conf"
+
+# Added as later scenarios come online:
+# - pipeline.id: imsi-catcher
+#   path.config: "/usr/share/logstash/pipeline/conf.d/imsi.conf"
+# - pipeline.id: sim-swap
+#   path.config: "/usr/share/logstash/pipeline/conf.d/simswap.conf"
+# - pipeline.id: gtp-dos
+#   path.config: "/usr/share/logstash/pipeline/conf.d/gtp.conf"
