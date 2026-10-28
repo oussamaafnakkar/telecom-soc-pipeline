@@ -3,91 +3,93 @@
 A detection pipeline that turns the attack scenarios from the [Secure Byte
 Chronicles Telecom Security series](https://www.sbytec.com/collections/telecom-security-series/)
 into working Sigma detection rules, ingested and alerted on through an ELK
-stack, and mapped to [MITRE FiGHT](https://fight.mitre.org/) (the
-telecom-specific ATT&CK-style framework).
+stack, and mapped to [MITRE FiGHT](https://fight.mitre.org/), the
+telecom-specific ATT&CK-style framework.
 
-Companion project to the blog series, built to demonstrate operational SOC
-skills - writing detections, running a SIEM, and testing for false positives
-- rather than just protocol write-ups.
+It is a companion project to the blog series. The goal is operational skill:
+writing a detection, running it in a SIEM, and proving it works with tests,
+including tests for false positives.
+
+Everything runs in Docker. All traffic is synthetic.
 
 ## Status
 
 | Scenario | Status |
 |---|---|
-| SS7 location disclosure | **Live** - generator, Sigma rule, Logstash ingest, CI-tested (100% detection, 0 false positives) |
+| SS7 location disclosure | **Live**: generator, Sigma rule, Logstash ingest, CI-tested |
 | IMSI catchers | Planned |
 | SIM swapping | Planned |
 | GTP security | Planned |
 
-See [`docs/mapping-table.md`](docs/mapping-table.md) for the full blog-post-to-rule mapping and FiGHT technique IDs.
+See [`docs/mapping-table.md`](docs/mapping-table.md) for the blog-post-to-rule mapping.
 
 ## Quickstart
 
-New to this repo or unsure what connects to what? Start with
-[`docs/getting-started.md`](docs/getting-started.md) instead - it walks
-through every command below one at a time, explains what you should see, and
-covers debugging. The commands below are the short version for once you're
-comfortable.
+You need Docker (with the compose plugin) and `make`. Nothing else.
 
 ```bash
-git clone <this-repo>
+git clone git@github.com:oussamaafnakkar/telecom-soc-pipeline.git
 cd telecom-soc-pipeline
 
-# generate attack + benign traffic fixtures
-python3 generators/ss7_atsi_generator.py --scenario attack --count 20 --out tests/fixtures/ss7_attack.jsonl
-python3 generators/ss7_atsi_generator.py --scenario benign --count 50 --out tests/fixtures/ss7_benign.jsonl
-
-# fast local check, no ELK required
-python3 detections/evaluate_ss7_rule.py tests/fixtures/ss7_attack.jsonl --expect alerts
-python3 detections/evaluate_ss7_rule.py tests/fixtures/ss7_benign.jsonl --expect silent
-
-# full stack: ingest into a real SIEM and view in Kibana
-docker compose up -d
-# Kibana: http://localhost:5601  (events land in the ss7-signaling-* index)
+make test     # detection tests in Docker, no Elasticsearch needed
+make e2e      # start Elasticsearch, Logstash and Kibana, then verify the whole pipeline
+make down     # stop the stack when you are done
 ```
+
+`make e2e` ends with four `PASS` lines. Kibana is then available at
+http://localhost:5601. Run `make help` to see every command.
+
+New to the project? [`docs/getting-started.md`](docs/getting-started.md) walks
+through each command one at a time and explains what you should see.
 
 ## How it works
 
 ```
-generator -> JSON signaling events -> Logstash (tags Sigma-rule matches) -> Elasticsearch -> Kibana
+fixtures container -> JSON events -> Logstash (tags rule matches) -> Elasticsearch -> Kibana
 ```
 
-Full breakdown in [`docs/architecture.md`](docs/architecture.md). A
-line-by-line explanation of every file, including how the CI/CD jobs work,
-is in [`docs/code-walkthrough.md`](docs/code-walkthrough.md).
+1. A Python generator writes synthetic SS7 signaling events: attack traffic from
+   untrusted Global Titles, and benign traffic from trusted roaming partners.
+2. A Sigma rule defines what counts as an attack.
+3. Logstash applies the same logic and tags matching events.
+4. A verifier asks Elasticsearch whether exactly the attack events were tagged.
 
-## Why this exists
-
-Full project rationale and how it fits the Moroccan SOC analyst job market is
-in the project brief (kept outside this repo, alongside the job-search
-materials).
+Details: [`docs/architecture.md`](docs/architecture.md) and
+[`docs/code-walkthrough.md`](docs/code-walkthrough.md).
 
 ## Repository layout
 
 ```
-generators/       Python event generators (attack + benign traffic per scenario)
+Dockerfile          tools image (generators, tests, verifier)
+docker-compose.yml  the whole stack
+Makefile            every command you need
+generators/         Python event generators, attack and benign traffic per scenario
 detections/
-  sigma/           Sigma detection rules - the source of truth for detection logic
-  evaluate_*.py     Standalone evaluators used for fast local testing and CI smoke tests
+  sigma/            Sigma rules, the source of truth for detection logic
+  evaluate_*.py     standalone rule evaluators used by the tests
 ingest/logstash/    Logstash pipeline configs
-dashboards/         Importable Kibana dashboard exports
-docs/               Architecture notes and the blog-post-to-rule mapping table
-tests/fixtures/     Generated JSONL fixtures (gitignored except small committed samples)
-.github/workflows/  CI: lint, Sigma validation, compose validation, detection smoke test, full ELK integration test
+scripts/            container scripts: fixtures, detection tests, end-to-end verifier
+docs/               architecture, code walkthrough, getting started, mapping table
+.github/workflows/  CI
 ```
 
-## CI/CD
+## CI
 
-Every push and pull request runs, in order: Python lint, Sigma rule schema
-validation, `docker compose config` validation, a fast detection smoke test
-(generator -> rule, no ELK needed), and a full end-to-end integration test
-that stands up the real ELK stack, ingests both fixtures, and asserts
-Elasticsearch tagged exactly the attack traffic as alerts. See
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+Every push and pull request runs the same commands you run locally:
+
+1. Lint and validate: ruff, Sigma rule fields, shell syntax, `docker compose config`
+2. `make test`: detection tests in Docker
+3. `make up` then `make verify`: the full stack, checked end to end
+
+See [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ## Security notes
 
-This is a local development / demo configuration - Elasticsearch runs
-without auth for simplicity. Do not expose it beyond localhost as-is. See
-[`docs/architecture.md`](docs/architecture.md) for the intended network
-boundary and what a hardened deployment would add.
+This is a local demo configuration. Elasticsearch runs with security disabled,
+so every published port is bound to `127.0.0.1`. Do not expose it beyond
+localhost as it is. See [`docs/architecture.md`](docs/architecture.md) for the
+network boundary and what a hardened deployment adds.
+
+## Contributing and license
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Released under the [MIT License](LICENSE).

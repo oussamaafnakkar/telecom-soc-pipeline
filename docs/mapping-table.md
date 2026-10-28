@@ -17,7 +17,7 @@ Each shipped rule is tested against a benign traffic fixture generated from
 the same script family as the attack fixture, using the opposite `--scenario`
 flag (see `generators/`). The test asserts the rule produces **zero** matches
 on that benign set. This is run automatically in CI on every push
-(`.github/workflows/ci.yml`, job `detection-smoke-test`), not just once
+(`.github/workflows/ci.yml`, job `detection-tests`), not just once
 locally - so the number in this table can't silently go stale.
 
 ## Roadmap

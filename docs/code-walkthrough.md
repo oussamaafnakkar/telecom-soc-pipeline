@@ -67,9 +67,11 @@ turns "a rule was written" into "the rule was proven to work."
 The production-shaped path, three stages:
 
 - `input`: reads JSONL files from `/data/ss7/`.
-- `filter`: parses the timestamp, then re-implements the same detection
-  condition a third time (Logstash's own conditional syntax) and tags
-  matching events with `sigma_match_ss7_location_disclosure` before indexing.
+- `filter`: re-implements the same detection condition a third time, in
+  Logstash's own conditional syntax, and tags matching events with
+  `sigma_match_ss7_location_disclosure` before indexing. Logstash has no
+  `true`/`false` literals, so `src_gt_trusted_partner: false` in the Sigma rule
+  becomes `![src_gt_trusted_partner]` here, meaning "this field is false".
 - `output`: ships to Elasticsearch into a daily index (`ss7-signaling-YYYY.MM.DD`).
 
 Yes - the detection logic now exists in three places (Sigma rule, Python
@@ -79,38 +81,62 @@ yet having a converter that generates the Logstash/Elastic query directly
 from the Sigma rule. Documented here and in `architecture.md` so it reads as
 understood scope, not a gap nobody noticed.
 
+## `Dockerfile` and `scripts/`
+
+One small image (`python:3.12-slim`, standard library only, non-root user)
+carries three jobs, each a script in `scripts/`:
+
+- `make_fixtures.sh` writes the attack and benign JSONL files into `/data/ss7`.
+- `run_detection_tests.sh` generates fresh events in a temp directory and checks
+  that the rule fires on all attack events and on no benign event.
+- `verify_e2e.py` asks Elasticsearch four questions: total documents, alert-tagged
+  documents, false positives (tagged but trusted) and missed detections
+  (untagged but untrusted). Any wrong answer exits non-zero.
+
 ## `docker-compose.yml`
 
-Three services: `elasticsearch` (storage/search), `logstash` (depends on
-Elasticsearch being **healthy**, not just started, via
-`depends_on: condition: service_healthy`), and `kibana` (the UI, the only
-port bound beyond the internal Docker network). `soc-net` is a private bridge
-network so containers reach each other by service name
-(`http://elasticsearch:9200`) without exposing anything except Kibana's port
-to the host.
+Six services:
+
+- `fixtures` runs once, writes the event files into the `fixtures` volume and exits.
+- `elasticsearch` stores events. Its healthcheck gates everything that depends on it.
+- `logstash` starts only after Elasticsearch is healthy **and** `fixtures` has
+  completed (`service_completed_successfully`), so the files exist before it
+  starts reading. It mounts the same `fixtures` volume read-only.
+- `kibana` is the UI.
+- `tests` and `verify` sit behind the `test` profile, so `docker compose up`
+  does not start them. `make test` and `make verify` run them on demand.
+
+Containers talk over the private `soc-net` network by service name
+(`http://elasticsearch:9200`). Only Elasticsearch and Kibana publish a port,
+both on `127.0.0.1`.
+
+## `Makefile`
+
+A short name for each command, so local use and CI are identical:
+
+| Command | What it does |
+|---|---|
+| `make test` | detection tests in Docker, no Elasticsearch |
+| `make up` | build and start the stack |
+| `make verify` | run the end-to-end assertions against the running stack |
+| `make e2e` | `reset`, `up`, `verify` in order |
+| `make logs`, `make ps` | debugging |
+| `make down`, `make reset` | stop, or stop and delete all data |
 
 ## CI/CD (`.github/workflows/ci.yml`)
 
-Three jobs run in sequence - each `needs:` the previous one, so a failure
-stops the chain early instead of burning runner time on doomed later steps.
+Three jobs run in sequence. Each `needs:` the previous one, so a failure stops
+the chain early.
 
-1. **`lint-and-validate`** - `ruff` on the Python, a schema check that every
-   Sigma rule has its required fields, and `docker compose config` to catch a
-   broken compose file before anything tries to deploy it.
-2. **`detection-smoke-test`** - generates fresh attack and benign fixtures
-   inside the runner (not committed data, regenerated every run) and asserts
-   the Python evaluator gets 100% detection and 0% false positives. No Docker
-   needed, so it's fast.
-3. **`end-to-end-elk-test`** - the real proof: runs `docker compose up -d`
-   inside the GitHub Actions runner itself, waits for Elasticsearch to report
-   healthy, waits for the fixtures to finish indexing, then queries
-   Elasticsearch directly and asserts exactly 10 documents carry the
-   `sigma_match_ss7_location_disclosure` tag. This proves the whole chain
-   (generator -> Logstash -> Elasticsearch), not just the rule logic in
-   isolation. `docker compose down -v` runs with `if: always()` so it tears
-   down even on failure, and `docker compose logs` only prints
-   `if: failure()`, so passing runs stay quiet and failing runs give you
-   exactly the debugging output you need.
+1. **`lint-and-validate`**: `ruff`, a check that every Sigma rule has its
+   required fields, shell syntax checks, and `docker compose config`.
+2. **`detection-tests`**: `make build` then `make test`. The same command you run locally.
+3. **`end-to-end-elk-test`**: `make up` then `make verify`. On failure it prints
+   `docker compose ps` and the service logs. `make reset` runs with `if: always()`
+   so the runner is cleaned up either way.
 
-To watch a run: push to GitHub, open the **Actions** tab, click the running
-workflow, and each job's logs stream live.
+Because CI calls the same `make` targets as a developer, a green local run means
+a green CI run, and a red CI run can be reproduced on your own machine with the
+same command.
+
+To watch a run: push to GitHub, open the **Actions** tab, click the workflow.

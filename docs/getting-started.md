@@ -1,200 +1,120 @@
-# Getting Started (do this on your machine, in order)
+# Getting Started
 
-Don't read this end to end first. Run each command as you get to it, look at
-what it prints, then move to the next one. This is the order that actually
-builds understanding.
+Run each command as you reach it and look at what it prints before moving on.
+Do not read this whole file first.
 
-## 1. Get the code onto your machine and look at it
+## 0. Prerequisites (Arch Linux)
 
 ```bash
-cd ~/projects                      # or wherever you keep repos
-unzip telecom-soc-pipeline.zip
+sudo pacman -S docker docker-compose docker-buildx make
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER      # then log out and back in
+docker compose version             # should print a version
+```
+
+## 1. Look around
+
+```bash
 cd telecom-soc-pipeline
-```
-
-Look at the shape of the project first, no reading yet:
-
-```bash
-tree -L 2
-```
-
-You already know this output. Now open the smallest file and actually read it:
-
-```bash
+tree -a -I .git
 cat detections/sigma/ss7-location-disclosure.yml
 ```
 
-This is 30 lines. This is the entire "what counts as an attack" definition
-for the whole project. Everything else exists to produce data for this file
-to check, or to run this file's logic against real traffic. Read it twice.
-The important part is `detection: selection:` - those three lines are the
-actual rule.
+The Sigma file is the whole definition of "what is an attack" in this project.
+The lines under `detection: selection:` are the actual rule. Everything else
+exists to feed this rule data or to prove it works. Read it twice.
 
-## 2. Generate fake attack traffic and read it with your own eyes
+## 2. See the fake traffic with your own eyes
 
 ```bash
-python3 generators/ss7_atsi_generator.py --scenario attack --count 3
+docker compose run --rm tests python3 generators/ss7_atsi_generator.py --scenario attack --count 3
+docker compose run --rm tests python3 generators/ss7_atsi_generator.py --scenario benign --count 3
 ```
 
-You'll see 3 lines of JSON print to your terminal. Each line is one fake
-signaling event. Look at the `src_gt_trusted_partner` field on each line - it
-should say `false`. That's the thing the Sigma rule checks for.
+Each line is one signaling event. Compare `src_gt_trusted_partner`: `false` in
+the attack run, `true` in the benign run. That one field is what the rule checks.
 
-Now run it again with `benign` instead of `attack`:
+## 3. Run the detection tests
 
 ```bash
-python3 generators/ss7_atsi_generator.py --scenario benign --count 3
+make test
 ```
 
-Same shape of data, but now `src_gt_trusted_partner` says `true`. That's the
-entire difference between the two files. Nothing else about the data changes
-in a way that matters to the rule.
+Read the output top to bottom. The attack file must produce an `ALERT` for every
+event, and the benign file must produce none. Both must end in `PASS`. If
+either fails, the command exits with an error, and that is exactly what turns CI red.
 
-## 3. Save both to files, then check the rule against them yourself
+Nothing here needs Elasticsearch. This is the fast loop: change the rule or the
+generator, run `make test`, repeat.
+
+## 4. Start the full stack
 
 ```bash
-mkdir -p tests/fixtures
-python3 generators/ss7_atsi_generator.py --scenario attack --count 20 --out tests/fixtures/ss7_attack.jsonl
-python3 generators/ss7_atsi_generator.py --scenario benign --count 50 --out tests/fixtures/ss7_benign.jsonl
+make e2e
 ```
 
-Look at the file you just made:
+This stops anything old, starts Elasticsearch, Logstash and Kibana, and then runs
+the verifier. The first run downloads about 2 GB of images, so be patient.
+It ends with four `PASS` lines:
+
+```
+PASS  total documents: got 70, expected 70
+PASS  alert-tagged documents: got 20, expected 20
+PASS  false positives (tagged but trusted): got 0, expected 0
+PASS  missed detections (untagged but untrusted): got 0, expected 0
+```
+
+Those four numbers are the proof that the whole pipeline works.
+
+## 5. Look at it in Kibana
+
+Open http://localhost:5601 in a browser.
+
+1. Open the menu, then **Stack Management**, then **Data Views**, then create one named `ss7-signaling-*`.
+   Pick `@timestamp` as the time field.
+2. Open **Discover** and select that data view.
+3. If the table is empty, widen the time range to the last 24 hours.
+4. Type `tags : "sigma_match_ss7_location_disclosure"` in the search bar.
+   You should see exactly 20 events, all attack traffic.
+
+You can also query Elasticsearch directly:
 
 ```bash
-cat tests/fixtures/ss7_attack.jsonl | head -n 2
-wc -l tests/fixtures/ss7_attack.jsonl        # should say 20
+curl "http://localhost:9200/ss7-signaling-*/_count?pretty"
 ```
 
-Now run the detection logic against it:
+## 6. Debugging
 
 ```bash
-python3 detections/evaluate_ss7_rule.py tests/fixtures/ss7_attack.jsonl --expect alerts
+make ps                          # is every service up? Exited (0) is correct for `fixtures`
+make logs                        # last 100 lines of every service
+docker compose logs logstash     # one service
+make reset                       # delete everything and start clean
 ```
 
-Read the output top to bottom. Each `ALERT` line is one event that matched
-the rule. At the bottom it tells you `20/20 events matched` and `PASS`.
+| Symptom | Where to look |
+|---|---|
+| `make verify` times out | `docker compose logs logstash`: a config error or a file it could not read |
+| Total documents is more than 70 | You started the stack twice without a reset. Run `make e2e` |
+| Elasticsearch never gets healthy | `docker compose logs elasticsearch`: usually not enough memory |
+| `permission denied` talking to Docker | You are not in the `docker` group, see step 0 |
 
-Now run it against the benign file:
+## 7. Git
 
 ```bash
-python3 detections/evaluate_ss7_rule.py tests/fixtures/ss7_benign.jsonl --expect silent
+git status
+git add <files>
+git commit -m "docs: describe what changed"
+git push -u origin <branch>
 ```
 
-This time you should see `0/50 events matched` and `PASS`. Nothing printed
-as an ALERT because none of the trusted-partner traffic should trigger it.
+After pushing, open the Actions tab of your repository. CI runs the same
+`make test` and `make e2e` you just ran by hand.
 
-**Stop here and make sure this part makes sense before moving to Docker.**
-Everything so far ran with plain `python3` - no Docker, no Elasticsearch, no
-Kibana. This is the fast inner loop: change the rule or the generator, rerun
-these two commands, see if it still passes. This is also exactly what the
-`detection-smoke-test` CI job does automatically on every push.
+## The whole system in one paragraph
 
-## 4. Bring up the real SIEM stack (Elasticsearch + Logstash + Kibana)
-
-```bash
-docker compose up -d
-```
-
-Watch what starts:
-
-```bash
-docker compose ps
-```
-
-You should see three containers: `soc-elasticsearch`, `soc-logstash`,
-`soc-kibana`. `STATUS` will say `starting` or `health: starting` at first.
-Wait a bit and run `docker compose ps` again until Elasticsearch shows
-`healthy`.
-
-Check Elasticsearch is actually responding:
-
-```bash
-curl http://localhost:9200
-```
-
-You should get back a JSON blob describing the cluster. If you get
-"connection refused," it's not up yet - wait and retry.
-
-## 5. Check that your fake data actually made it into Elasticsearch
-
-Logstash reads from `tests/fixtures/*.jsonl` (see the `docker-compose.yml`
-volume mount) and pushes into Elasticsearch. Check the count:
-
-```bash
-curl "http://localhost:9200/ss7-signaling-*/_count"
-```
-
-You should see a number matching how many events you generated (20 + 50 = 70,
-if you kept both files in `tests/fixtures/`).
-
-Check specifically how many got tagged as alerts:
-
-```bash
-curl -s "http://localhost:9200/ss7-signaling-*/_search?size=0" \
-  -H 'Content-Type: application/json' \
-  -d '{"query": {"term": {"tags": "sigma_match_ss7_location_disclosure"}}}'
-```
-
-Look for `"value"` inside `"total"` in the response - it should be 20, matching
-your attack file. This is the same check the CI end-to-end test does, just
-run by hand.
-
-## 6. Look at it visually in Kibana
-
-Open in your browser: `http://localhost:5601`
-
-First time in Kibana, you need to point it at your data:
-1. Go to **Stack Management -> Index Patterns** (or **Data Views**, depending
-   on version).
-2. Create one matching `ss7-signaling-*`.
-3. Go to **Discover** in the left sidebar and pick that pattern.
-
-You'll see your 70 events as a table. Filter by typing
-`tags: "sigma_match_ss7_location_disclosure"` in the search bar - you should
-get exactly 20 rows back, all your attack traffic, none of your benign
-traffic.
-
-## 7. Debugging - what to do when something doesn't work
-
-```bash
-docker compose logs elasticsearch    # is it complaining about memory/disk?
-docker compose logs logstash         # did it fail to parse the config or the files?
-docker compose logs kibana           # can it reach elasticsearch?
-```
-
-Common issues:
-- **Elasticsearch never goes healthy**: it often needs more memory than
-  Docker Desktop/your daemon allows by default. Check `docker compose logs
-  elasticsearch` for an out-of-memory or `vm.max_map_count` error.
-- **Logstash shows 0 documents indexed**: check `docker compose logs logstash`
-  for a parse error - most likely a malformed line in your `.jsonl` file, or
-  the file wasn't in `tests/fixtures/` when the container started (Logstash
-  only picks up files present at container start with the current config).
-- **Nothing works and you want a clean slate**:
-  ```bash
-  docker compose down -v      # stops everything AND deletes the Elasticsearch data volume
-  docker compose up -d        # start fresh
-  ```
-
-## 8. Git - saving and pushing your work
-
-```bash
-git status                    # what changed since your last commit
-git add .
-git commit -m "docs: add getting-started guide"
-git push
-```
-
-After `git push`, go to your repo on GitHub, click the **Actions** tab, and
-watch the three CI jobs run in real time. This is the same sequence you just
-ran by hand in steps 3-5, except GitHub does it automatically on every push.
-
-## The one-sentence version of the whole system
-
-A Python script invents fake signaling traffic and labels each event as
-trustworthy or not. A Sigma rule says "flag anything untrustworthy." Three
-things check that rule against the data: a quick Python script (for fast
-local iteration and CI), a Logstash filter (for the real pipeline), and
-Kibana (so a human can see the result). Docker Compose is just the thing that
-starts Elasticsearch, Logstash, and Kibana together so they can talk to each
-other.
+A container writes fake signaling events and labels each source as trusted or not.
+A Sigma rule says "flag the untrusted ones". Logstash applies that rule while
+indexing into Elasticsearch, Kibana lets a human look at the result, and a
+verifier checks the counts. Docker Compose starts all of it together, and Make
+gives each step a short name.

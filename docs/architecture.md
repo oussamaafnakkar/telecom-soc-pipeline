@@ -1,11 +1,13 @@
 # Architecture
 
 ```
-generator (Python)              logstash                 elasticsearch          kibana
-   |  writes JSONL events           |  parses, tags            |  indexes            |  dashboards + alert
-   |  (attack or benign)            |  sigma-rule matches       |  ss7-signaling-*    |  view
-   v                                v                           v                    v
-tests/fixtures/*.jsonl  --->  ingest/logstash/conf.d/ss7.conf ---> ES index ---> Kibana (127.0.0.1:5601 only)
+fixtures container        logstash                 elasticsearch          kibana
+  | writes JSONL events     | reads the volume,       | indexes into          | dashboards
+  | into a Docker volume    | tags rule matches       | ss7-signaling-*       | 127.0.0.1:5601
+  v                         v                         v                      v
+ [fixtures volume] ---> ingest/logstash/conf.d/ss7.conf ---> [ES index] ---> [Kibana]
+                                                              ^
+                                       verify container ------+  (asserts the counts)
 ```
 
 ## Why events, not raw wire bytes
@@ -23,8 +25,10 @@ without needing a real telecom protocol stack.
 
 ## Network / security boundary
 
-- Elasticsearch and Logstash are only reachable inside the `soc-net` Docker
-  network and bound to `127.0.0.1` on the host - never `0.0.0.0`.
+- Elasticsearch and Kibana publish ports on `127.0.0.1` only, never `0.0.0.0`.
+  Logstash publishes nothing. The tools containers (fixtures, tests, verify) run
+  as a non-root user with a read-only filesystem, all Linux capabilities dropped
+  and `no-new-privileges` set.
 - Kibana is the only service meant to be reached by a person, and only on
   localhost in this dev/demo configuration.
 - `xpack.security.enabled=false` on Elasticsearch is a **local-development
