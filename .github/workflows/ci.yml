@@ -6,23 +6,30 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   lint-and-validate:
-    name: Lint & validate configs
+    name: Lint and validate configs
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: pip install pyyaml ruff
 
       - name: Lint Python (ruff)
-        run: ruff check generators/ detections/
+        run: ruff check generators/ detections/ scripts/
+
+      - name: Check shell script syntax
+        run: for f in scripts/*.sh; do sh -n "$f"; done
 
       - name: Validate Sigma rule YAML syntax
         run: |
@@ -45,86 +52,40 @@ jobs:
       - name: Validate docker-compose config
         run: docker compose config --quiet
 
-  detection-smoke-test:
-    name: Detection smoke test (generator -> rule, no ELK)
+  detection-tests:
+    name: Detection tests (in Docker, no ELK)
     runs-on: ubuntu-latest
     needs: lint-and-validate
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Build tools image
+        run: make build
 
-      - name: Generate attack and benign fixtures
-        run: |
-          mkdir -p tests/fixtures
-          python3 generators/ss7_atsi_generator.py --scenario attack --count 20 --seed 42 --out tests/fixtures/ss7_attack.jsonl
-          python3 generators/ss7_atsi_generator.py --scenario benign --count 50 --seed 42 --out tests/fixtures/ss7_benign.jsonl
-
-      - name: Assert rule fires on 100% of attack traffic
-        run: python3 detections/evaluate_ss7_rule.py tests/fixtures/ss7_attack.jsonl --expect alerts
-
-      - name: Assert zero false positives on benign traffic
-        run: python3 detections/evaluate_ss7_rule.py tests/fixtures/ss7_benign.jsonl --expect silent
+      - name: Run detection tests
+        run: make test
 
   end-to-end-elk-test:
     name: End-to-end ELK integration test
     runs-on: ubuntu-latest
-    needs: detection-smoke-test
+    needs: detection-tests
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Start the stack
+        run: make up
 
-      - name: Generate fixtures for ingestion
-        run: |
-          mkdir -p tests/fixtures
-          python3 generators/ss7_atsi_generator.py --scenario attack --count 10 --seed 7 --out tests/fixtures/ss7_attack.jsonl
-          python3 generators/ss7_atsi_generator.py --scenario benign --count 10 --seed 7 --out tests/fixtures/ss7_benign.jsonl
+      - name: Verify the pipeline end to end
+        run: make verify
 
-      - name: Start the ELK stack
-        run: docker compose up -d elasticsearch logstash kibana
-
-      - name: Wait for Elasticsearch
-        run: |
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:9200/_cluster/health && break
-            echo "waiting for elasticsearch ($i/30)..."
-            sleep 5
-          done
-
-      - name: Wait for events to be indexed
-        run: |
-          for i in $(seq 1 20); do
-            count=$(curl -sf "http://localhost:9200/ss7-signaling-*/_count" | python3 -c "import sys,json; print(json.load(sys.stdin).get('count', 0))" 2>/dev/null || echo 0)
-            echo "indexed so far: $count"
-            [ "$count" -ge "20" ] && break
-            sleep 5
-          done
-
-      - name: Assert attack events were tagged as alerts, benign were not
-        run: |
-          curl -s "http://localhost:9200/ss7-signaling-*/_search?size=0" \
-            -H 'Content-Type: application/json' \
-            -d '{"query": {"term": {"tags": "sigma_match_ss7_location_disclosure"}}}' \
-            | python3 -c "
-          import sys, json
-          r = json.load(sys.stdin)
-          hits = r['hits']['total']['value']
-          print(f'alert-tagged documents in Elasticsearch: {hits}')
-          assert hits == 10, f'expected exactly 10 alert-tagged docs (the attack fixture), got {hits}'
-          print('PASS: end-to-end pipeline (generator -> Logstash -> Elasticsearch) tagged exactly the attack traffic.')
-          "
-
-      - name: Dump Logstash logs on failure
+      - name: Show service logs on failure
         if: failure()
-        run: docker compose logs logstash elasticsearch
+        run: |
+          docker compose ps -a
+          docker compose logs --tail=200
 
       - name: Tear down
         if: always()
-        run: docker compose down -v
+        run: make reset
