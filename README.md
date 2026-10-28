@@ -23,6 +23,12 @@ See [`docs/mapping-table.md`](docs/mapping-table.md) for the full blog-post-to-r
 
 ## Quickstart
 
+New to this repo or unsure what connects to what? Start with
+[`docs/getting-started.md`](docs/getting-started.md) instead - it walks
+through every command below one at a time, explains what you should see, and
+covers debugging. The commands below are the short version for once you're
+comfortable.
+
 ```bash
 git clone <this-repo>
 cd telecom-soc-pipeline
