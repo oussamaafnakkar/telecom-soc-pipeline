@@ -29,7 +29,7 @@ import json
 import random
 import sys
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 # MAP opcode 71 = anyTimeInterrogation (3GPP TS 29.002)
 MAP_ATSI_OPCODE = 71
@@ -116,7 +116,7 @@ def main():
     if args.seed is not None:
         random.seed(args.seed)
 
-    start = datetime.now(timezone.utc)
+    start = datetime.now(UTC)
     if args.scenario == "attack":
         events = generate_attack(args.count, start)
     else:

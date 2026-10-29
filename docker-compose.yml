@@ -1,28 +1,59 @@
-version: "3.8"
+# Telecom Signaling Detection Pipeline
+#
+#   fixtures (one-shot)  writes JSON events into the `fixtures` volume, then exits
+#   elasticsearch        stores and searches events
+#   logstash             reads the fixtures volume, tags rule matches, indexes into Elasticsearch
+#   kibana               the UI, the only service meant to be opened in a browser
+#   tests, verify        run on demand (profile "test"), see the Makefile
+#
+# SECURITY: this is a local demo configuration. Elasticsearch runs with
+# security disabled, so every published port is bound to 127.0.0.1 only.
+# Do not change those bindings to 0.0.0.0 without enabling authentication first.
 
-# Single-node ELK stack for local development and demo purposes.
-# NOT a production security-hardened deployment: Elasticsearch has no auth
-# enabled here for simplicity of local `docker compose up`. Kibana is the
-# only service that should ever be exposed beyond localhost - see
-# docs/architecture.md for the intended network boundary in a real deployment.
+name: telecom-soc-pipeline
+
+x-tools: &tools
+  build: .
+  image: telecom-soc-tools:local
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  networks:
+    - soc-net
 
 services:
+  fixtures:
+    <<: *tools
+    container_name: soc-fixtures
+    command: ["sh", "scripts/make_fixtures.sh"]
+    environment:
+      - ATTACK_COUNT=${ATTACK_COUNT:-20}
+      - BENIGN_COUNT=${BENIGN_COUNT:-50}
+      - SEED=${SEED:-42}
+    volumes:
+      - fixtures:/data/ss7
+    restart: "no"
+
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.14.3
     container_name: soc-elasticsearch
     environment:
       - discovery.type=single-node
-      - xpack.security.enabled=false   # dev/demo only - see docs/architecture.md
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
-      - "127.0.0.1:9200:9200"   # bound to localhost only, not 0.0.0.0
+      - "127.0.0.1:9200:9200"
     volumes:
       - esdata:/usr/share/elasticsearch/data
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 20
+      retries: 30
     networks:
       - soc-net
 
@@ -32,10 +63,15 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
+      fixtures:
+        condition: service_completed_successfully
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - XPACK_MONITORING_ENABLED=false
     volumes:
       - ./ingest/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
       - ./ingest/logstash/conf.d:/usr/share/logstash/pipeline/conf.d:ro
-      - ./tests/fixtures:/data/ss7:ro   # mount generated event fixtures for demo runs
+      - fixtures:/data/ss7:ro
     networks:
       - soc-net
 
@@ -48,12 +84,37 @@ services:
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
     ports:
-      - "127.0.0.1:5601:5601"   # the only port meant to ever be exposed
+      - "127.0.0.1:5601:5601"
     networks:
       - soc-net
 
+  # On-demand jobs. Run with `make test` and `make verify`.
+  tests:
+    <<: *tools
+    profiles: ["test"]
+    command: ["sh", "scripts/run_detection_tests.sh"]
+    environment:
+      - ATTACK_COUNT=${ATTACK_COUNT:-20}
+      - BENIGN_COUNT=${BENIGN_COUNT:-50}
+      - SEED=${SEED:-42}
+
+  verify:
+    <<: *tools
+    profiles: ["test"]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      logstash:
+        condition: service_started
+    environment:
+      - ES_URL=http://elasticsearch:9200
+      - EXPECT_ATTACK=${ATTACK_COUNT:-20}
+      - EXPECT_BENIGN=${BENIGN_COUNT:-50}
+    command: ["python3", "scripts/verify_e2e.py"]
+
 volumes:
   esdata:
+  fixtures:
 
 networks:
   soc-net:
