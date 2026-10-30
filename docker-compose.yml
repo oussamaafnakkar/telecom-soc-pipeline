@@ -1,6 +1,6 @@
 # Telecom Signaling Detection Pipeline
 #
-#   fixtures (one-shot)  writes JSON events into the `fixtures` volume, then exits
+#   fixtures (one-shot)  writes JSON events (one folder per scenario) into the `fixtures` volume, then exits
 #   elasticsearch        stores and searches events
 #   logstash             reads the fixtures volume, tags rule matches, indexes into Elasticsearch
 #   kibana               the UI, the only service meant to be opened in a browser
@@ -35,7 +35,7 @@ services:
       - BENIGN_COUNT=${BENIGN_COUNT:-50}
       - SEED=${SEED:-42}
     volumes:
-      - fixtures:/data/ss7
+      - fixtures:/data
     restart: "no"
 
   elasticsearch:
@@ -71,7 +71,7 @@ services:
     volumes:
       - ./ingest/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
       - ./ingest/logstash/conf.d:/usr/share/logstash/pipeline/conf.d:ro
-      - fixtures:/data/ss7:ro
+      - fixtures:/data:ro
     networks:
       - soc-net
 
