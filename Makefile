@@ -9,13 +9,13 @@ help: ## Show this help
 build: ## Build the tools image
 	$(COMPOSE) build
 
-test: ## Run the detection tests in Docker (fast, no Elasticsearch needed)
+test: build ## Run the detection tests in Docker (fast, no Elasticsearch needed)
 	$(COMPOSE) run --rm tests
 
 up: ## Start Elasticsearch, Logstash and Kibana with fresh fixtures
 	$(COMPOSE) up -d --build
 
-verify: ## Check the running stack indexed and tagged the data correctly
+verify: build ## Check the running stack indexed and tagged the data correctly
 	$(COMPOSE) run --rm verify
 
 e2e: reset up verify ## Clean slate, start the stack, verify it (leaves the stack running)
