@@ -40,9 +40,15 @@ the attack run, `true` in the benign run. That one field is what the rule checks
 make test
 ```
 
-Read the output top to bottom. The attack file must produce an `ALERT` for every
-event, and the benign file must produce none. Both must end in `PASS`. If
-either fails, the command exits with an error, and that is exactly what turns CI red.
+Read the output top to bottom. There is one block per scenario, SS7 then IMSI
+catchers. In each block the attack file must alert on every event, and the benign
+file must alert on none. Every block must end in `PASS`. If any check fails, the
+command exits with an error, and that is exactly what turns CI red.
+
+The IMSI block prints a table per variant. Read it: each attack variant is a
+different kind of rogue cell, and the table shows which rule caught it. Then
+look at the benign table, where every count is zero even though several variants
+trip one or two of the weak indicators.
 
 Nothing here needs Elasticsearch. This is the fast loop: change the rule or the
 generator, run `make test`, repeat.
@@ -55,32 +61,37 @@ make e2e
 
 This stops anything old, starts Elasticsearch, Logstash and Kibana, and then runs
 the verifier. The first run downloads about 2 GB of images, so be patient.
-It ends with four `PASS` lines:
+It ends with a block of `PASS` lines for each scenario. The IMSI block looks like this:
 
 ```
+== IMSI catcher indicators (imsi-catcher-*) ==
 PASS  total documents: got 70, expected 70
 PASS  alert-tagged documents: got 20, expected 20
-PASS  false positives (tagged but trusted): got 0, expected 0
-PASS  missed detections (untagged but untrusted): got 0, expected 0
+PASS  false positives (tagged but benign): got 0, expected 0
+PASS  missed detections (untagged but attack): got 0, expected 0
+PASS  variant research_grade carries sigma_match_imsi_catcher_critical_indicator: got 7, expected 7
+...
 ```
 
-Those four numbers are the proof that the whole pipeline works.
+These counts are the proof that the whole pipeline works, for every scenario.
 
 ## 5. Look at it in Kibana
 
 Open http://localhost:5601 in a browser.
 
-1. Open the menu, then **Stack Management**, then **Data Views**, then create one named `ss7-signaling-*`.
-   Pick `@timestamp` as the time field.
-2. Open **Discover** and select that data view.
+1. Open the menu, then **Stack Management**, then **Data Views**, and create one named
+   `ss7-signaling-*` and another named `imsi-catcher-*`. Pick `@timestamp` as the time field.
+2. Open **Discover** and select a data view.
 3. If the table is empty, widen the time range to the last 24 hours.
-4. Type `tags : "sigma_match_ss7_location_disclosure"` in the search bar.
-   You should see exactly 20 events, all attack traffic.
+4. In the SS7 view, search `tags : "sigma_match_ss7_location_disclosure"`: exactly 20 events.
+   In the IMSI view, search `tags : "sigma_match_imsi_catcher_critical_indicator"` and then
+   `tags : "sigma_match_imsi_catcher_weak_indicator_combo"` and compare the counts with the
+   variant table from `make test`.
 
 You can also query Elasticsearch directly:
 
 ```bash
-curl "http://localhost:9200/ss7-signaling-*/_count?pretty"
+curl "http://localhost:9200/imsi-catcher-*/_count?pretty"
 ```
 
 ## 6. Debugging

@@ -1,13 +1,11 @@
 # Architecture
 
 ```
-fixtures container        logstash                 elasticsearch          kibana
-  | writes JSONL events     | reads the volume,       | indexes into          | dashboards
-  | into a Docker volume    | tags rule matches       | ss7-signaling-*       | 127.0.0.1:5601
-  v                         v                         v                      v
- [fixtures volume] ---> ingest/logstash/conf.d/ss7.conf ---> [ES index] ---> [Kibana]
-                                                              ^
-                                       verify container ------+  (asserts the counts)
+fixtures container     logstash (one pipeline per scenario)     elasticsearch        kibana
+  writes JSONL            ss7.conf    tags SS7 matches            ss7-signaling-*      dashboards
+  per scenario into  -->  imsi.conf   tags IMSI matches   -->     imsi-catcher-*   --> 127.0.0.1:5601
+  a Docker volume                                                     ^
+                                                  verify container ---+  (asserts the counts)
 ```
 
 ## Why events, not raw wire bytes
