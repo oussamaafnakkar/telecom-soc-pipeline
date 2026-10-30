@@ -1,0 +1,42 @@
+title: IMSI Catcher Weak Indicator Combination (No Auth, No Neighbours, Unknown Strong Cell)
+id: 7a43adf0-09c6-48cf-b7ee-519a532ea72f
+status: experimental
+description: |
+  Post #6 says the detection indicators are "individually weak but collectively
+  significant". This rule fires only when three weak indicators appear on the
+  same measurement:
+  IND-04: the network never issued an AUTHENTICATION REQUEST.
+  IND-05: the serving cell advertises fewer than two neighbours.
+  IND-06: the cell is not in the operator inventory and its signal is stronger
+  than -55 dBm.
+  Each one alone has a normal cause (congestion, an isolated rural cell, a new
+  tower). All three together describe a cell that cannot authenticate, hides
+  its neighbours so phones cannot leave, and shouts from an unknown location.
+references:
+    - https://www.sbytec.com/vulnerabilities/imsi-catchers/
+author: Secure Byte Chronicles
+date: 2026/10/28
+tags:
+    - sbc.indicator.ind-04
+    - sbc.indicator.ind-05
+    - sbc.indicator.ind-06
+logsource:
+    category: telecom_radio
+    product: gsm_cell_measurement
+detection:
+    selection:
+        auth_requested: false
+        neighbor_count|lt: 2
+        cell_in_inventory: false
+        rssi_dbm|gt: -55
+    condition: selection
+falsepositives:
+    - >-
+      A brand-new tower in a rural area that is congested at the moment it is
+      measured and is not yet in the inventory. Keep the inventory current and
+      check recent deployment tickets before escalating.
+    - >-
+      Known limitation. A catcher that shows only two of the three indicators
+      (for example no auth and no neighbours, but a cell id that is in the
+      inventory because it clones a real one) is not detected by this rule.
+level: high

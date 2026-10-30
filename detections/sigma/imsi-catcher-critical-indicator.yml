@@ -1,0 +1,45 @@
+title: IMSI Catcher Critical Indicator (Fingerprint LAC or Null Cipher on a Moroccan Carrier)
+id: 4dd9eee1-e6bf-4d6c-8c68-8a10ab4701a1
+status: experimental
+description: |
+  Detects the two critical indicators from SBC post #6, Part 8 (Detection).
+  IND-01: the serving cell uses a Location Area Code (0, 1, 0xFFFD, 0xFFFE,
+  0xFFFF) that deployed networks never assign and that research-grade IMSI
+  catchers use by default.
+  IND-03: the null cipher A5/0 is active on a Moroccan carrier cell (MCC 604,
+  MNC 00, 01 or 02). Moroccan operators use A5/1 or A5/3 on macro cells, so
+  A5/0 points to a downgrade imposed by a rogue base station.
+  Either indicator alone is enough to alert.
+references:
+    - https://www.sbytec.com/vulnerabilities/imsi-catchers/
+author: Secure Byte Chronicles
+date: 2026/10/28
+tags:
+    - sbc.indicator.ind-01
+    - sbc.indicator.ind-03
+logsource:
+    category: telecom_radio
+    product: gsm_cell_measurement
+detection:
+    selection_fingerprint_lac:
+        lac:
+            - 0
+            - 1
+            - 65533
+            - 65534
+            - 65535
+    selection_null_cipher:
+        mcc: 604
+        mnc:
+            - 0
+            - 1
+            - 2
+        encryption: 'A5/0'
+    condition: selection_fingerprint_lac or selection_null_cipher
+falsepositives:
+    - A5/0 seen on a foreign roaming-partner cell is NOT matched, because the
+      rule requires MCC 604. If a Moroccan operator ever enables A5/0 on a
+      legacy cell for a documented reason, add that cell to an exclusion list.
+    - Test or lab cells deliberately configured with a reserved LAC. Confirm
+      against the operator's RF test schedule before escalating.
+level: critical
