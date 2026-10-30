@@ -52,6 +52,15 @@ jobs:
       - name: Validate docker-compose config
         run: docker compose config --quiet
 
+      - name: Validate Logstash pipeline syntax
+        run: |
+          docker run --rm \
+            -v "$PWD/ingest/logstash/conf.d:/usr/share/logstash/pipeline/conf.d:ro" \
+            -v "$PWD/ingest/logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro" \
+            docker.elastic.co/logstash/logstash:8.14.3 \
+            --path.settings /usr/share/logstash/config \
+            --config.test_and_exit
+
   detection-tests:
     name: Detection tests (in Docker, no ELK)
     runs-on: ubuntu-latest
