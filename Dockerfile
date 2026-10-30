@@ -2,10 +2,10 @@
 # end-to-end verifier. Standard library only, so there is nothing to pip install.
 FROM python:3.12-slim
 
-# Non-root user. The /data/ss7 directory is created here so that a Docker
-# named volume mounted on it inherits this ownership on first use.
+# Non-root user. The /data tree is created here so that a Docker named volume
+# mounted on /data inherits this ownership on first use.
 RUN useradd --uid 1000 --create-home app \
-    && mkdir -p /data/ss7 \
+    && mkdir -p /data/ss7 /data/imsi \
     && chown -R app:app /data
 
 WORKDIR /app
@@ -17,5 +17,5 @@ USER app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Default job: write the attack and benign fixtures into /data/ss7.
+# Default job: write the attack and benign fixtures into /data/<scenario>/.
 CMD ["sh", "scripts/make_fixtures.sh"]

@@ -30,7 +30,8 @@ Each scenario ships four things, and a pull request is incomplete without all fo
 1. A generator in `generators/` that can produce both **attack** and **benign** events.
 2. A Sigma rule in `detections/sigma/`, with `falsepositives` filled in honestly.
 3. Tests: the rule must fire on every attack event and stay silent on every benign event.
-4. A row in `docs/mapping-table.md` linking the scenario to the blog post and the MITRE FiGHT technique.
+4. A row in `docs/mapping-table.md` linking the scenario to the blog post and to a framework
+   reference. Only list a MITRE FiGHT, ATT&CK or GSMA MoTIF ID you have checked against the source.
 
 ## Safety
 

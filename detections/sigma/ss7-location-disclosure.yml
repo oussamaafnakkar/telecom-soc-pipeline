@@ -13,8 +13,8 @@ author: Secure Byte Chronicles
 date: 2026/08/27
 tags:
     - attack.reconnaissance
-    - attack.t1592  # gather victim host/network information (closest ATT&CK analogue)
-    - fight.t1579   # MITRE FiGHT: Location Tracking (SS7)
+    # Technique-level MITRE FiGHT / ATT&CK IDs are deliberately not listed until
+    # they are verified against fight.mitre.org. See docs/mapping-table.md.
 logsource:
     category: telecom_signaling
     product: ss7_map

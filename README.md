@@ -17,7 +17,7 @@ Everything runs in Docker. All traffic is synthetic.
 | Scenario | Status |
 |---|---|
 | SS7 location disclosure | **Live**: generator, Sigma rule, Logstash ingest, CI-tested |
-| IMSI catchers | Planned |
+| IMSI catchers | **Live**: generator, two Sigma rules, Logstash ingest, CI-tested |
 | SIM swapping | Planned |
 | GTP security | Planned |
 
@@ -36,7 +36,7 @@ make e2e      # start Elasticsearch, Logstash and Kibana, then verify the whole 
 make down     # stop the stack when you are done
 ```
 
-`make e2e` ends with four `PASS` lines. Kibana is then available at
+`make e2e` ends with a block of `PASS` lines for each scenario. Kibana is then available at
 http://localhost:5601. Run `make help` to see every command.
 
 New to the project? [`docs/getting-started.md`](docs/getting-started.md) walks
@@ -48,10 +48,11 @@ through each command one at a time and explains what you should see.
 fixtures container -> JSON events -> Logstash (tags rule matches) -> Elasticsearch -> Kibana
 ```
 
-1. A Python generator writes synthetic SS7 signaling events: attack traffic from
-   untrusted Global Titles, and benign traffic from trusted roaming partners.
-2. A Sigma rule defines what counts as an attack.
-3. Logstash applies the same logic and tags matching events.
+1. Python generators write synthetic events for each scenario: SS7 signaling from
+   untrusted and trusted Global Titles, and GSM cell measurements from rogue and
+   legitimate cells. Every scenario has attack traffic and benign look-alikes.
+2. Sigma rules define what counts as an attack.
+3. Logstash applies the same logic, one pipeline per scenario, and tags matching events.
 4. A verifier asks Elasticsearch whether exactly the attack events were tagged.
 
 Details: [`docs/architecture.md`](docs/architecture.md) and
@@ -63,7 +64,7 @@ Details: [`docs/architecture.md`](docs/architecture.md) and
 Dockerfile          tools image (generators, tests, verifier)
 docker-compose.yml  the whole stack
 Makefile            every command you need
-generators/         Python event generators, attack and benign traffic per scenario
+generators/         Python event generators, attack and benign traffic per scenario (ss7, imsi)
 detections/
   sigma/            Sigma rules, the source of truth for detection logic
   evaluate_*.py     standalone rule evaluators used by the tests
