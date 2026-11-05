@@ -2,10 +2,12 @@
 
 ```
 fixtures container     logstash (one pipeline per scenario)     elasticsearch        kibana
-  writes JSONL            ss7.conf    tags SS7 matches            ss7-signaling-*      dashboards
-  per scenario into  -->  imsi.conf   tags IMSI matches   -->     imsi-catcher-*   --> 127.0.0.1:5601
-  a Docker volume                                                     ^
-                                                  verify container ---+  (asserts the counts)
+  writes JSONL            ss7.conf      tags SS7 matches          ss7-signaling-*      dashboards
+  per scenario into  -->  imsi.conf     tags IMSI matches   -->   imsi-catcher-*   --> 127.0.0.1:5601
+  a Docker volume         simswap.conf  tags SIM swap matches     sim-swap-*
+                                                                       ^
+                                                  verify container ----+  (asserts the counts and
+                                                                           the SIM swap correlation)
 ```
 
 ## Why events, not raw wire bytes
