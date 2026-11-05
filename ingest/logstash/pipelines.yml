@@ -6,8 +6,9 @@
 - pipeline.id: imsi-catcher
   path.config: "/usr/share/logstash/pipeline/conf.d/imsi.conf"
 
+- pipeline.id: sim-swap
+  path.config: "/usr/share/logstash/pipeline/conf.d/simswap.conf"
+
 # Added as later scenarios come online:
-# - pipeline.id: sim-swap
-#   path.config: "/usr/share/logstash/pipeline/conf.d/simswap.conf"
 # - pipeline.id: gtp-dos
 #   path.config: "/usr/share/logstash/pipeline/conf.d/gtp.conf"

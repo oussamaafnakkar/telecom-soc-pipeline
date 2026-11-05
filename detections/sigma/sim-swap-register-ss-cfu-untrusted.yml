@@ -1,0 +1,32 @@
+title: SIM Swap Indicator - MAP RegisterSS Call Forwarding from Untrusted Global Title
+name: sim_swap_register_ss_cfu_untrusted
+id: c78132bc-4133-4505-bcfb-7396186da141
+status: experimental
+description: |
+  Detects a MAP REGISTER-SS (opcode 10) that sets unconditional call forwarding
+  (ss-Code 0x21, CFU) from a Global Title outside the trusted interconnect list.
+  Post #8, Part 3 describes this as the persistence step: the forwarding rule
+  lives in the HLR profile, survives the end of the attacker's SS7 connection,
+  and sends voice 2FA calls to the attacker's number.
+references:
+    - https://www.sbytec.com/vulnerabilities/sim-swapping/
+author: Secure Byte Chronicles
+date: 2026/11/02
+tags:
+    - sbc.post.sim-swapping
+logsource:
+    category: telecom_signaling
+    product: ss7_map
+detection:
+    selection:
+        signaling_protocol: 'MAP'
+        map_opcode: 10
+        ss_code: 33
+        src_gt_trusted_partner: false
+    condition: selection
+falsepositives:
+    - >-
+      A subscriber setting call forwarding while roaming on a partner network whose
+      GT is missing from the trusted list. The forwarding number is in the event,
+      so check it against the subscriber's known numbers.
+level: high

@@ -40,8 +40,8 @@ the attack run, `true` in the benign run. That one field is what the rule checks
 make test
 ```
 
-Read the output top to bottom. There is one block per scenario, SS7 then IMSI
-catchers. In each block the attack file must alert on every event, and the benign
+Read the output top to bottom. There is one block per scenario: SS7, IMSI
+catchers, then SIM swapping. In each block the attack file must alert on every event, and the benign
 file must alert on none. Every block must end in `PASS`. If any check fails, the
 command exits with an error, and that is exactly what turns CI red.
 
@@ -80,13 +80,16 @@ These counts are the proof that the whole pipeline works, for every scenario.
 Open http://localhost:5601 in a browser.
 
 1. Open the menu, then **Stack Management**, then **Data Views**, and create one named
-   `ss7-signaling-*` and another named `imsi-catcher-*`. Pick `@timestamp` as the time field.
+   `ss7-signaling-*`, another named `imsi-catcher-*` and a third named `sim-swap-*`. Pick `@timestamp` as the time field.
 2. Open **Discover** and select a data view.
 3. If the table is empty, widen the time range to the last 24 hours.
 4. In the SS7 view, search `tags : "sigma_match_ss7_location_disclosure"`: exactly 20 events.
    In the IMSI view, search `tags : "sigma_match_imsi_catcher_critical_indicator"` and then
    `tags : "sigma_match_imsi_catcher_weak_indicator_combo"` and compare the counts with the
    variant table from `make test`.
+   In the SIM swap view, search `tags : "sigma_match_sim_swap_register_ss_cfu_untrusted"`
+   and look at `imsi`: five of those IMSIs also appear under the UpdateLocation tag, which is
+   the correlation the verifier counts.
 
 You can also query Elasticsearch directly:
 

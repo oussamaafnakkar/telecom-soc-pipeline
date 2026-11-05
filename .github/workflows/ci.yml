@@ -35,11 +35,13 @@ jobs:
         run: |
           python3 - <<'EOF'
           import sys, yaml, glob
-          required = {"title", "id", "status", "logsource", "detection", "level"}
+          detection_fields = {"title", "id", "status", "logsource", "detection", "level"}
+          correlation_fields = {"title", "id", "status", "correlation", "level"}
           ok = True
           for path in glob.glob("detections/sigma/*.yml"):
               with open(path) as f:
                   rule = yaml.safe_load(f)
+              required = correlation_fields if "correlation" in rule else detection_fields
               missing = required - rule.keys()
               if missing:
                   print(f"FAIL {path}: missing required fields {missing}")
