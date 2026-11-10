@@ -1,0 +1,33 @@
+title: GTP Create Session Claiming a Serving Network That Is Not the Sender's
+name: gtp_create_session_serving_network_mismatch
+id: 0276fe76-25c1-43fa-afe6-52b073c81f04
+status: experimental
+description: |
+  Detects a Create Session Request whose Serving Network IE does not match the
+  network the source IP belongs to. A genuine visited SGW reports its own PLMN.
+  A forged request often claims another one, such as the home network itself as
+  in the post's example (MCC 604, MNC 01). This is the consistency check of
+  FS.20 layer 2, applied to the claimed identity.
+references:
+    - https://www.sbytec.com/vulnerabilities/gtp-security/
+author: Secure Byte Chronicles
+date: 2026/11/04
+tags:
+    - sbc.post.gtp-security
+logsource:
+    category: telecom_signaling
+    product: gtp_c
+detection:
+    selection:
+        signaling_protocol: 'GTPv2-C'
+        gtp_message_type: 32
+    filter_matching:
+        serving_network_plmn|fieldref: src_peer_plmn
+    condition: selection and not filter_matching
+falsepositives:
+    - >-
+      Multi-network roaming hubs that legitimately forward sessions on behalf of
+      several PLMNs. Add the hub's source IP to an exclusion list.
+    - >-
+      A stale peer table that maps an IP to the wrong network after a renumbering.
+level: high
