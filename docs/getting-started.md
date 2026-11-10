@@ -41,7 +41,7 @@ make test
 ```
 
 Read the output top to bottom. There is one block per scenario: SS7, IMSI
-catchers, then SIM swapping. In each block the attack file must alert on every event, and the benign
+catchers, SIM swapping, then GTP. In each block the attack file must alert on every event, and the benign
 file must alert on none. Every block must end in `PASS`. If any check fails, the
 command exits with an error, and that is exactly what turns CI red.
 
@@ -80,7 +80,7 @@ These counts are the proof that the whole pipeline works, for every scenario.
 Open http://localhost:5601 in a browser.
 
 1. Open the menu, then **Stack Management**, then **Data Views**, and create one named
-   `ss7-signaling-*`, another named `imsi-catcher-*` and a third named `sim-swap-*`. Pick `@timestamp` as the time field.
+   `ss7-signaling-*`, another named `imsi-catcher-*` and a third named `sim-swap-*` and a fourth named `gtp-security-*`. Pick `@timestamp` as the time field.
 2. Open **Discover** and select a data view.
 3. If the table is empty, widen the time range to the last 24 hours.
 4. In the SS7 view, search `tags : "sigma_match_ss7_location_disclosure"`: exactly 20 events.
@@ -90,6 +90,10 @@ Open http://localhost:5601 in a browser.
    In the SIM swap view, search `tags : "sigma_match_sim_swap_register_ss_cfu_untrusted"`
    and look at `imsi`: five of those IMSIs also appear under the UpdateLocation tag, which is
    the correlation the verifier counts.
+   In the GTP view, search `tags : "sigma_match_gtp_session_op_untrusted_peer"` for the 4 events from
+   peers without a roaming agreement. The flood is not tagged on purpose: find it by searching
+   `gtp_message_type : 32` and `src_ip : "198.51.100.30"`, and look at how many different `imsi`
+   values arrive within a minute.
 
 You can also query Elasticsearch directly:
 

@@ -5,9 +5,10 @@ fixtures container     logstash (one pipeline per scenario)     elasticsearch   
   writes JSONL            ss7.conf      tags SS7 matches          ss7-signaling-*      dashboards
   per scenario into  -->  imsi.conf     tags IMSI matches   -->   imsi-catcher-*   --> 127.0.0.1:5601
   a Docker volume         simswap.conf  tags SIM swap matches     sim-swap-*
+                          gtp.conf      tags GTP matches          gtp-security-*
                                                                        ^
-                                                  verify container ----+  (asserts the counts and
-                                                                           the SIM swap correlation)
+                                                  verify container ----+  (asserts the counts, the SIM swap
+                                                                           correlation and the GTP threshold)
 ```
 
 ## Why events, not raw wire bytes
