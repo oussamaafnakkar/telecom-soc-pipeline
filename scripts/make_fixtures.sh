@@ -9,7 +9,7 @@ ATTACK_COUNT="${ATTACK_COUNT:-20}"
 BENIGN_COUNT="${BENIGN_COUNT:-50}"
 SEED="${SEED:-42}"
 
-mkdir -p "$OUT/ss7" "$OUT/imsi" "$OUT/simswap"
+mkdir -p "$OUT/ss7" "$OUT/imsi" "$OUT/simswap" "$OUT/gtp"
 
 python3 generators/ss7_atsi_generator.py --scenario attack --count "$ATTACK_COUNT" --seed "$SEED" --out "$OUT/ss7/ss7_attack.jsonl"
 python3 generators/ss7_atsi_generator.py --scenario benign --count "$BENIGN_COUNT" --seed "$SEED" --out "$OUT/ss7/ss7_benign.jsonl"
@@ -20,4 +20,7 @@ python3 generators/imsi_catcher_generator.py --scenario benign --count "$BENIGN_
 python3 generators/sim_swap_generator.py --scenario attack --count "$ATTACK_COUNT" --seed "$SEED" --out "$OUT/simswap/simswap_attack.jsonl"
 python3 generators/sim_swap_generator.py --scenario benign --count "$BENIGN_COUNT" --seed "$SEED" --out "$OUT/simswap/simswap_benign.jsonl"
 
-echo "fixtures written to $OUT: $ATTACK_COUNT attack and $BENIGN_COUNT benign events per scenario (ss7, imsi, simswap)"
+python3 generators/gtp_generator.py --scenario attack --count "$ATTACK_COUNT" --seed "$SEED" --out "$OUT/gtp/gtp_attack.jsonl"
+python3 generators/gtp_generator.py --scenario benign --count "$BENIGN_COUNT" --seed "$SEED" --out "$OUT/gtp/gtp_benign.jsonl"
+
+echo "fixtures written to $OUT: $ATTACK_COUNT attack and $BENIGN_COUNT benign events per scenario (ss7, imsi, simswap, gtp)"
