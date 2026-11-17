@@ -19,7 +19,7 @@ Everything runs in Docker. All traffic is synthetic.
 | SS7 location disclosure | **Live**: generator, Sigma rule, Logstash ingest, CI-tested |
 | IMSI catchers | **Live**: generator, two Sigma rules, Logstash ingest, CI-tested |
 | SIM swapping | **Live**: generator, two Sigma rules plus a correlation rule, Logstash ingest, CI-tested |
-| GTP security | Planned |
+| GTP security | **Live**: generator, two Sigma rules plus a threshold rule, Logstash ingest, CI-tested |
 
 See [`docs/mapping-table.md`](docs/mapping-table.md) for the blog-post-to-rule mapping.
 
@@ -49,8 +49,8 @@ fixtures container -> JSON events -> Logstash (tags rule matches) -> Elasticsear
 ```
 
 1. Python generators write synthetic events for each scenario: SS7 signaling from
-   untrusted and trusted Global Titles, MAP operations that make up a SIM swap, and
-   GSM cell measurements from rogue and legitimate cells. Every scenario has attack traffic and benign look-alikes.
+   untrusted and trusted Global Titles, MAP operations that make up a SIM swap, GTP-C messages
+   at the roaming border, and GSM cell measurements from rogue and legitimate cells. Every scenario has attack traffic and benign look-alikes.
 2. Sigma rules define what counts as an attack.
 3. Logstash applies the same logic, one pipeline per scenario, and tags matching events.
 4. A verifier asks Elasticsearch whether exactly the attack events were tagged.
@@ -64,7 +64,7 @@ Details: [`docs/architecture.md`](docs/architecture.md) and
 Dockerfile          tools image (generators, tests, verifier)
 docker-compose.yml  the whole stack
 Makefile            every command you need
-generators/         Python event generators, attack and benign traffic per scenario (ss7, imsi, simswap)
+generators/         Python event generators, attack and benign traffic per scenario (ss7, imsi, simswap, gtp)
 detections/
   sigma/            Sigma rules, the source of truth for detection logic
   evaluate_*.py     standalone rule evaluators used by the tests

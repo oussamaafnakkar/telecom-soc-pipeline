@@ -1,0 +1,34 @@
+title: GTP Bearer Table Exhaustion - Many Subscribers from One Peer in a Minute
+id: bdf4eaf0-e9d9-4bbe-a38b-b55332152238
+status: experimental
+description: |
+  Correlation rule for attack 3d in SBC post #9. Fires when one source IP sends
+  Create Session Requests for 10 or more different IMSIs within 60 seconds. The
+  post reports bearer table exhaustion in under 60 seconds against 28 of 28
+  tested operators.
+  It counts distinct IMSIs, not requests, so a single subscriber retrying a failed
+  attach many times does not fire it. It is the one rule here that catches a flood
+  from a trusted partner, where no individual message looks wrong.
+references:
+    - https://www.sbytec.com/vulnerabilities/gtp-security/
+author: Secure Byte Chronicles
+date: 2026/11/04
+tags:
+    - sbc.post.gtp-security
+correlation:
+    type: value_count
+    rules:
+        - gtp_create_session_observed
+    group-by:
+        - src_ip
+    timespan: 60s
+    condition:
+        gte: 10
+        field: imsi
+falsepositives:
+    - >-
+      A genuine mass event such as a large flight landing or a network recovery after
+      an outage can bring many subscribers through one partner at once. Tune the
+      threshold per partner from their normal peak, and compare against the arrival_wave
+      look-alike in the fixtures.
+level: critical

@@ -200,6 +200,57 @@ is the natural next step, and it is not implemented here.
 The test also proves the correlation does not over-reach. `ul_only` and `register_ss_only`
 incidents sit close together in time but on different IMSIs, so they must not correlate.
 
+## The GTP scenario
+
+This scenario follows Parts 3, 5 and 7 of the SBC post on GTP security. An attacker on
+the GRX/IPX roaming network sends GTPv2-C messages straight to a PGW, and the PGW does
+not check that the sender is a real SGW. The events are what a probe at the border logs:
+one decoded GTP-C message each, with two fields the probe adds from its peer table,
+`src_peer_plmn` (the network the source IP belongs to) and `src_peer_trusted` (a roaming
+agreement exists).
+
+### `generators/gtp_generator.py`
+
+| Incident | Events | What it is | Rule that catches it |
+|---|---|---|---|
+| `rogue_create_session` | 1 | CSR from an unknown peer, claiming the home network | untrusted peer, serving mismatch |
+| `spoofed_serving_network` | 1 | CSR from the compromised partner node, claiming another network | serving mismatch only |
+| `modify_bearer_hijack` | 1 | Modify Bearer from an unknown peer | untrusted peer |
+| `bearer_flood` | 12 | 12 different IMSIs in seconds, from the compromised partner | the threshold only |
+| `roaming_create_session`, `sgw_handover_modify_bearer`, `delete_session` | 1 | ordinary traffic from trusted partners | none |
+| `arrival_wave` | 8 | 8 subscribers from one partner in about 30 s | none (below the threshold) |
+| `csr_retransmission` | 12 | one subscriber retrying 12 times | none (1 distinct IMSI) |
+
+### The rules
+
+- `gtp-session-op-untrusted-peer.yml`: message type 32 or 34 from a peer without a roaming
+  agreement. This is FS.20 layer 3, "is the source network authorised?".
+- `gtp-serving-network-mismatch.yml`: a Create Session whose claimed Serving Network is
+  not the sender's own. `serving_network_plmn|fieldref: src_peer_plmn` is Sigma's way of
+  comparing two fields, and `condition: selection and not filter_matching` means "the
+  fields do NOT match". This is the consistency check of FS.20 layer 2.
+- `gtp-create-session-observed.yml` is a base rule that matches every Create Session. It is
+  not an alert, it only feeds the next rule.
+- `gtp-bearer-exhaustion.yml` is a Sigma `value_count` correlation: group by `src_ip`,
+  window 60 s, fire when `imsi` has 10 or more distinct values.
+
+### A new kind of detection: the threshold
+
+The SIM swap correlation joined two events on one IMSI. This one **counts**. The flood
+comes from a trusted partner, so every message in it is individually fine. Only the rate
+gives it away, which is why no per-event rule can catch it and why flood events are exempt
+from the per-event "must alert" check.
+
+The threshold is implemented once, as `exhaustion_sources()` in
+`detections/evaluate_gtp_rules.py`, and used by the local test and by the verifier, in the
+same way as `correlate()` for SIM swapping. It is a check, not yet a live alert: in
+production it would be a Kibana threshold rule or an Elasticsearch aggregation.
+
+### `ingest/logstash/conf.d/gtp.conf`
+
+Tags the two per-event rules. The serving-network rule compares two fields directly,
+`[serving_network_plmn] != [src_peer_plmn]`, which is what `fieldref` expresses in Sigma.
+
 ## `Dockerfile` and `scripts/`
 
 One small image (`python:3.12-slim`, standard library only, non-root user)
@@ -212,7 +263,8 @@ carries three jobs, each a script in `scripts/`:
 - `verify_e2e.py` asks Elasticsearch the same questions for each scenario: total
   documents, alert-tagged documents, false positives (tagged but benign) and missed
   detections (untagged but attack). It also checks that every attack variant carries a
-  rule it is meant to trip, and for SIM swapping that exactly the full swaps correlate.
+  rule it is meant to trip, for SIM swapping that exactly the full swaps correlate, and for GTP that exactly the
+  flood source crosses the threshold.
   Any wrong answer exits non-zero.
 
 ## `docker-compose.yml`

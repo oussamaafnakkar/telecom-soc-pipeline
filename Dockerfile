@@ -5,7 +5,7 @@ FROM python:3.12-slim
 # Non-root user. The /data tree is created here so that a Docker named volume
 # mounted on /data inherits this ownership on first use.
 RUN useradd --uid 1000 --create-home app \
-    && mkdir -p /data/ss7 /data/imsi /data/simswap \
+    && mkdir -p /data/ss7 /data/imsi /data/simswap /data/gtp \
     && chown -R app:app /data
 
 WORKDIR /app

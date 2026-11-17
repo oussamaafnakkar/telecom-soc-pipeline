@@ -15,6 +15,8 @@ answer is wrong:
   5. Per attack variant: every event carries a rule that variant should trip
   6. If the scenario has a correlation rule: the number of IMSIs that carry both
      tags within the time window equals the number of full swaps
+  7. If the scenario has a threshold rule: exactly the flood sources are flagged
+     (events of a threshold-only variant are exempt from checks 2 and 4)
 
 "Attack" and "benign" come from the ground truth of each scenario: the trusted
 flag for SS7, and the `fixture_label` test label for IMSI catchers. The
@@ -34,6 +36,7 @@ from datetime import datetime
 
 # The correlation logic lives in one place, next to the rules it implements.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "detections"))
+from evaluate_gtp_rules import exhaustion_sources
 from evaluate_sim_swap_rules import correlate
 
 ES_URL = os.environ.get("ES_URL", "http://localhost:9200")
@@ -46,6 +49,8 @@ IMSI_CRITICAL_TAG = "sigma_match_imsi_catcher_critical_indicator"
 IMSI_WEAK_TAG = "sigma_match_imsi_catcher_weak_indicator_combo"
 SIM_UL_TAG = "sigma_match_sim_swap_update_location_untrusted"
 SIM_CFU_TAG = "sigma_match_sim_swap_register_ss_cfu_untrusted"
+GTP_PEER_TAG = "sigma_match_gtp_session_op_untrusted_peer"
+GTP_SN_TAG = "sigma_match_gtp_serving_network_mismatch"
 
 SCENARIOS = [
     {
@@ -71,6 +76,21 @@ SCENARIOS = [
         # sim-swap-correlation.yml: both tags on one IMSI within 60 s. Each
         # full swap is two events, so the expected count is half of them.
         "correlation": {"tag_a": SIM_UL_TAG, "tag_b": SIM_CFU_TAG, "variant": "full_swap", "events_per_incident": 2},
+    },
+    {
+        "name": "GTP session abuse (GRX/IPX border)",
+        "index": "gtp-security-*",
+        "alert_tags": [GTP_PEER_TAG, GTP_SN_TAG],
+        "attack": {"match": {"fixture_label": "attack"}},
+        "benign": {"match": {"fixture_label": "benign"}},
+        "variants": {
+            "rogue_create_session": [GTP_PEER_TAG, GTP_SN_TAG],
+            "spoofed_serving_network": [GTP_SN_TAG],
+            "modify_bearer_hijack": [GTP_PEER_TAG],
+        },
+        # gtp-bearer-exhaustion.yml: 10+ distinct IMSIs from one source in 60 s.
+        # The flood comes from a trusted partner, so no single event is tagged.
+        "threshold": {"variant": "bearer_flood"},
     },
     {
         "name": "IMSI catcher indicators",
@@ -123,6 +143,22 @@ def tagged_hits(index, tag):
     ]
 
 
+def source_ips(index, query):
+    """The set of src_ip values among documents matching `query`."""
+    body = {"size": 1000, "_source": ["src_ip"], "query": query}
+    return {h["_source"]["src_ip"] for h in es("POST", f"/{index}/_search", body)["hits"]["hits"]}
+
+
+def create_session_observations(index):
+    """(src_ip, imsi, time) for every Create Session Request, the base rule of the threshold."""
+    body = {"size": 1000, "_source": ["src_ip", "imsi", "@timestamp"], "query": {"match": {"gtp_message_type": 32}}}
+    hits = es("POST", f"/{index}/_search", body)["hits"]["hits"]
+    return [
+        (h["_source"]["src_ip"], h["_source"]["imsi"], datetime.fromisoformat(h["_source"]["@timestamp"]))
+        for h in hits
+    ]
+
+
 def wait_for_documents(expected_total):
     """Poll until Logstash has indexed everything for every scenario, or time out."""
     deadline = time.time() + TIMEOUT_SECONDS
@@ -151,9 +187,19 @@ def checks_for(scenario):
     """Return a list of (description, actual, expected) for one scenario."""
     index = scenario["index"]
     tagged = any_tag(scenario["alert_tags"])
+    threshold = scenario.get("threshold")
+
+    # Events of a threshold-only variant are judged by the threshold, not one by one.
+    exempt = []
+    exempt_total = 0
+    if threshold:
+        in_exempt = {"match": {"fixture_variant": threshold["variant"]}}
+        exempt = [{"bool": {"must_not": [in_exempt]}}]
+        exempt_total = count(index, in_exempt)
+
     checks = [
         ("total documents", count(index), EXPECT_ATTACK + EXPECT_BENIGN),
-        ("alert-tagged documents", count(index, tagged), EXPECT_ATTACK),
+        ("alert-tagged documents", count(index, tagged), EXPECT_ATTACK - exempt_total),
         (
             "false positives (tagged but benign)",
             count(index, {"bool": {"must": [tagged, scenario["benign"]]}}),
@@ -161,7 +207,7 @@ def checks_for(scenario):
         ),
         (
             "missed detections (untagged but attack)",
-            count(index, {"bool": {"must": [scenario["attack"]], "must_not": [tagged]}}),
+            count(index, {"bool": {"must": [scenario["attack"], *exempt], "must_not": [tagged]}}),
             0,
         ),
     ]
@@ -178,6 +224,12 @@ def checks_for(scenario):
         expected = count(index, in_variant) // corr["events_per_incident"]
         found = correlate(tagged_hits(index, corr["tag_a"]), tagged_hits(index, corr["tag_b"]))
         checks.append(("correlated IMSIs (both rules within 60s)", len(found), expected))
+
+    if threshold:
+        flood = source_ips(index, {"match": {"fixture_variant": threshold["variant"]}})
+        flagged = exhaustion_sources(create_session_observations(index))
+        checks.append(("sources flagged by the exhaustion threshold", len(flagged & flood), len(flood)))
+        checks.append(("sources flagged that are not the flood", len(flagged - flood), 0))
     return checks
 
 

@@ -1,0 +1,25 @@
+title: GTP Create Session Request Observed
+name: gtp_create_session_observed
+id: 0764361b-e41c-42ad-940a-b16e252792f7
+status: experimental
+description: |
+  Base rule for the bearer exhaustion correlation. It matches every Create
+  Session Request and is NOT an alert on its own: a Create Session Request is the
+  most ordinary GTP-C message there is. Alert on the correlation rule instead.
+references:
+    - https://www.sbytec.com/vulnerabilities/gtp-security/
+author: Secure Byte Chronicles
+date: 2026/11/04
+tags:
+    - sbc.post.gtp-security
+logsource:
+    category: telecom_signaling
+    product: gtp_c
+detection:
+    selection:
+        signaling_protocol: 'GTPv2-C'
+        gtp_message_type: 32
+    condition: selection
+falsepositives:
+    - Every legitimate roaming session set-up. Do not alert on this rule directly.
+level: informational
