@@ -1,0 +1,35 @@
+title: GTP Session Operation from a Peer Without a Roaming Agreement
+name: gtp_session_op_untrusted_peer
+id: 80d56740-74e3-448b-9136-a4bbfb491d5b
+status: experimental
+description: |
+  Detects a GTPv2-C Create Session Request (32) or Modify Bearer Request (34)
+  arriving at the PGW from a peer that has no roaming agreement. This is the
+  entry condition of attacks 3a (Create Session impersonation) and 3b (Modify
+  Bearer redirect) in SBC post #9, and corresponds to FS.20 layer 3: is the
+  source network authorised to place this subscriber here?
+references:
+    - https://www.sbytec.com/vulnerabilities/gtp-security/
+author: Secure Byte Chronicles
+date: 2026/11/04
+tags:
+    - sbc.post.gtp-security
+logsource:
+    category: telecom_signaling
+    product: gtp_c
+detection:
+    selection:
+        signaling_protocol: 'GTPv2-C'
+        gtp_message_type:
+            - 32
+            - 34
+        src_peer_trusted: false
+    condition: selection
+falsepositives:
+    - >-
+      A roaming partner that has just signed an agreement and is not yet in the peer
+      table. Check the roaming agreement registry before escalating.
+    - >-
+      Known limitation. A compromised node of a trusted partner passes this check,
+      as the post notes about FS.20. See the exhaustion rule for one case it can catch.
+level: high
