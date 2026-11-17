@@ -41,3 +41,14 @@ python3 detections/evaluate_sim_swap_rules.py "$TMP/simswap_attack.jsonl" --expe
 echo
 echo "== benign fixture: no event may alert, nothing may correlate =="
 python3 detections/evaluate_sim_swap_rules.py "$TMP/simswap_benign.jsonl" --expect silent
+
+echo
+echo "######## GTP session abuse (GRX/IPX border) ########"
+python3 generators/gtp_generator.py --scenario attack --count "$ATTACK_COUNT" --seed "$SEED" --out "$TMP/gtp_attack.jsonl"
+python3 generators/gtp_generator.py --scenario benign --count "$BENIGN_COUNT" --seed "$SEED" --out "$TMP/gtp_benign.jsonl"
+
+echo "== attack fixture: each attack trips its rules, the flood trips the threshold =="
+python3 detections/evaluate_gtp_rules.py "$TMP/gtp_attack.jsonl" --expect alerts
+echo
+echo "== benign fixture: no event may alert, no source may be flagged =="
+python3 detections/evaluate_gtp_rules.py "$TMP/gtp_benign.jsonl" --expect silent

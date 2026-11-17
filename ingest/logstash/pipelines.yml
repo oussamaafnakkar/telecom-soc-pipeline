@@ -9,6 +9,9 @@
 - pipeline.id: sim-swap
   path.config: "/usr/share/logstash/pipeline/conf.d/simswap.conf"
 
+- pipeline.id: gtp-security
+  path.config: "/usr/share/logstash/pipeline/conf.d/gtp.conf"
+
 # Added as later scenarios come online:
 # - pipeline.id: gtp-dos
 #   path.config: "/usr/share/logstash/pipeline/conf.d/gtp.conf"
