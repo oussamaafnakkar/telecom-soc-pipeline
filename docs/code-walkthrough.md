@@ -146,6 +146,60 @@ Same shape as the SS7 pipeline: read files, tag matches, index into
 - `![auth_requested]` means "this boolean is false", for the same reason as in
   the SS7 pipeline: Logstash has no `true` or `false` literals.
 
+## The SIM swap scenario
+
+This scenario follows Part 3 of the SBC post on SIM swapping, the technical path
+through SS7. The attacker sends two MAP operations to the HLR:
+
+- **UPDATE-LOCATION** claims to be the new serving MSC. The HLR cancels the real
+  registration and routes the subscriber's SMS, including the bank's OTP, to the attacker.
+- **REGISTER-SS** with ss-Code 0x21 (CFU) sets unconditional call forwarding. The
+  rule lives in the HLR profile, so it survives the end of the attacker's connection
+  and catches voice calls.
+
+### `generators/sim_swap_generator.py`
+
+The unit is an **incident**: the operations that belong together, on one synthetic
+IMSI. `--count` is the number of events, and an incident is never split.
+
+| Incident | Events | Source | Meaning |
+|---|---|---|---|
+| `ul_only` | 1 | untrusted GT | SMS hijack only |
+| `register_ss_only` | 1 | untrusted GT | call hijack only |
+| `full_swap` | 2 | untrusted GT | both, 1 to 3 seconds apart: the full signature |
+| `roaming_update_location`, `home_update_location` | 1 | trusted | normal registrations |
+| `roaming_register_ss_cfu` | 1 | trusted | a roamer sets call forwarding |
+| `legit_cancel_location` | 1 | HLR | normal after any roaming change |
+| `traveler_lands_and_forwards` | 2 | trusted | the same two operations as `full_swap`, from a trusted partner |
+
+The last row is the important false-positive test. Without the source check, a
+traveller who lands, registers and forwards their calls would look exactly like a swap.
+
+### The three rules
+
+- `sim-swap-update-location-untrusted.yml`: opcode 2 from a GT that is not a trusted partner.
+- `sim-swap-register-ss-cfu-untrusted.yml`: opcode 10 with `ss_code: 33` from an untrusted GT.
+- `sim-swap-correlation.yml`: a Sigma **correlation** rule. `type: temporal` with
+  `group-by: imsi` and `timespan: 60s` means both single rules must match the same IMSI
+  within a minute, in either order. Each single rule is high severity, the pair is critical.
+
+### Where the correlation runs
+
+The first two rules judge one event, so Logstash can tag them at ingest
+(`ingest/logstash/conf.d/simswap.conf`). The correlation needs several events, which a
+Logstash filter cannot see. It is implemented once, as `correlate()` in
+`detections/evaluate_sim_swap_rules.py`, and used in two places:
+
+- the local test, to check that exactly the full swaps correlate;
+- the verifier, which fetches the tagged documents from Elasticsearch and runs the same function.
+
+Be ready to explain the limit: this is a correlation check, not yet a live alert. In
+production the same idea would be an Elasticsearch EQL sequence or a Kibana rule. That
+is the natural next step, and it is not implemented here.
+
+The test also proves the correlation does not over-reach. `ul_only` and `register_ss_only`
+incidents sit close together in time but on different IMSIs, so they must not correlate.
+
 ## `Dockerfile` and `scripts/`
 
 One small image (`python:3.12-slim`, standard library only, non-root user)
@@ -157,8 +211,9 @@ carries three jobs, each a script in `scripts/`:
   for every scenario, that the rules fire on all attack events and on no benign event.
 - `verify_e2e.py` asks Elasticsearch the same questions for each scenario: total
   documents, alert-tagged documents, false positives (tagged but benign) and missed
-  detections (untagged but attack). For IMSI catchers it also checks that every
-  attack variant carries the rule it is meant to trip. Any wrong answer exits non-zero.
+  detections (untagged but attack). It also checks that every attack variant carries a
+  rule it is meant to trip, and for SIM swapping that exactly the full swaps correlate.
+  Any wrong answer exits non-zero.
 
 ## `docker-compose.yml`
 

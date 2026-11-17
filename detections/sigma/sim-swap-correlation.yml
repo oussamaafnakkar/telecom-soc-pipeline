@@ -1,0 +1,28 @@
+title: SIM Swap via SS7 - UpdateLocation and Call Forwarding on the Same IMSI
+id: a5246830-94c1-4faf-95ac-50a5a9a1fcf7
+status: experimental
+description: |
+  Correlation rule. Fires when both single-operation rules match for the same
+  IMSI within 60 seconds. Post #8 explains why this is the full signature of the
+  technical SIM swap: UPDATE-LOCATION captures SMS delivery and REGISTER-SS
+  captures calls, so together they cover both channels used for 2FA.
+  Each single rule alone is high severity. The pair is critical.
+references:
+    - https://www.sbytec.com/vulnerabilities/sim-swapping/
+author: Secure Byte Chronicles
+date: 2026/11/02
+tags:
+    - sbc.post.sim-swapping
+correlation:
+    type: temporal
+    rules:
+        - sim_swap_update_location_untrusted
+        - sim_swap_register_ss_cfu_untrusted
+    group-by:
+        - imsi
+    timespan: 60s
+falsepositives:
+    - >-
+      A trusted-list gap that hides a genuine roamer from both single rules at once.
+      Fix the list, not this rule.
+level: critical

@@ -30,3 +30,14 @@ python3 detections/evaluate_imsi_rules.py "$TMP/imsi_attack.jsonl" --expect aler
 echo
 echo "== benign fixture: no event may alert =="
 python3 detections/evaluate_imsi_rules.py "$TMP/imsi_benign.jsonl" --expect silent
+
+echo
+echo "######## SIM swap (SS7 technical path) ########"
+python3 generators/sim_swap_generator.py --scenario attack --count "$ATTACK_COUNT" --seed "$SEED" --out "$TMP/simswap_attack.jsonl"
+python3 generators/sim_swap_generator.py --scenario benign --count "$BENIGN_COUNT" --seed "$SEED" --out "$TMP/simswap_benign.jsonl"
+
+echo "== attack fixture: every event must alert, and only full swaps may correlate =="
+python3 detections/evaluate_sim_swap_rules.py "$TMP/simswap_attack.jsonl" --expect alerts
+echo
+echo "== benign fixture: no event may alert, nothing may correlate =="
+python3 detections/evaluate_sim_swap_rules.py "$TMP/simswap_benign.jsonl" --expect silent
